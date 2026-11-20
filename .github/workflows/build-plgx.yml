@@ -20,7 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          submodules: recursive
           fetch-depth: 0
 
       - name: Verify tag points to main
@@ -69,6 +68,9 @@ jobs:
             Write-Host $_.ScriptStackTrace
             throw
           }
+
+      - name: Test PLGX project paths
+        run: python -m unittest discover -s tests -v
 
       - name: Restore NuGet packages
         run: nuget restore HaveIBeenPwned.sln
