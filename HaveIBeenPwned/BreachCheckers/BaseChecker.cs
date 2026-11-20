@@ -2,7 +2,6 @@
 using KeePassLib;
 using System.Net.Http;
 using KeePass.Plugins;
-using System.Drawing;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -10,27 +9,23 @@ namespace HaveIBeenPwned.BreachCheckers
 {
     public abstract class BaseChecker
     {
-        private PwDatabase passwordDatabase;
-        protected HttpClient client;
-        protected IPluginHost pluginHost;
+        protected readonly HttpClient client;
+        protected readonly IPluginHost pluginHost;
 
         protected BaseChecker(HttpClient httpClient, IPluginHost pluginHost)
         {
-            passwordDatabase = pluginHost.Database;
             client = httpClient;
             this.pluginHost = pluginHost;
         }
 
-        public async Task<List<BreachedEntry>> CheckDatabase(bool expireEntries, bool oldEntriesOnly, bool ignoreDeleted, bool ignoreExpired, IProgress<ProgressItem> progressIndicator, Func<bool> canContinue)
-        {
-            return await CheckGroup(passwordDatabase.RootGroup, expireEntries, oldEntriesOnly, ignoreDeleted, ignoreExpired, progressIndicator, canContinue);
-        }
-
-        public abstract Task<List<BreachedEntry>> CheckGroup(PwGroup group, bool expireEntries, bool oldEntriesOnly, bool ignoreDeleted, bool ignoreExpired, IProgress<ProgressItem> progressIndicator, Func<bool> canContinue);
-
-        public abstract Image BreachLogo { get; }
-
-        public abstract string BreachTitle { get; }
+        public abstract Task<List<BreachedEntry>> CheckGroup(
+            PwGroup group,
+            bool expireEntries,
+            bool oldEntriesOnly,
+            bool ignoreDeleted,
+            bool ignoreExpired,
+            IProgress<ProgressItem> progressIndicator,
+            Func<bool> canContinue);
 
         protected void ExpireEntry(PwEntry entry)
         {

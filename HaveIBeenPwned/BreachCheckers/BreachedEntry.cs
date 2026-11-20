@@ -5,7 +5,8 @@ namespace HaveIBeenPwned.BreachCheckers
 {
     public class BreachedEntry
     {
-        private IBreach breach;
+        private readonly IBreach breach;
+        private static readonly string[] EmptyDataClasses = new string[0];
 
         public PwEntry Entry { get; private set; }
 
@@ -53,8 +54,7 @@ namespace HaveIBeenPwned.BreachCheckers
         {
             get
             {
-                return breach.DataClasses
-                       ?? new string[0];
+                return breach.DataClasses ?? EmptyDataClasses;
             }
         }
 

@@ -111,7 +111,7 @@ jobs:
           $pluginSource = Join-Path $env:GITHUB_WORKSPACE 'HaveIBeenPwned'
           $plgxPath = Join-Path $env:GITHUB_WORKSPACE 'HaveIBeenPwned.plgx'
           Remove-Item -LiteralPath $plgxPath -Force -ErrorAction SilentlyContinue
-          $process = Start-Process -FilePath $keePassExe -ArgumentList @('--plgx-create', $pluginSource, '--plgx-prereq-kp:2.34', '--plgx-prereq-net:4.5.2') -Wait -PassThru
+          $process = Start-Process -FilePath $keePassExe -ArgumentList @('--plgx-create', $pluginSource, '--plgx-prereq-kp:2.34', '--plgx-prereq-net:4.8') -Wait -PassThru
           if ($process.ExitCode -ne 0) {
             throw "KeePass PLGX creation failed with exit code $($process.ExitCode)."
           }

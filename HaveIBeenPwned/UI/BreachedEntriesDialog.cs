@@ -6,7 +6,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace HaveIBeenPwned.UI
@@ -80,51 +79,43 @@ namespace HaveIBeenPwned.UI
             public BreachedEntry Breach { get; set; }
         }
 
-        [STAThread]
         private void breachedEntryList_MouseDoubleClick(object sender, MouseEventArgs e)
         {
-            if (breachedEntryList.SelectedItems != null && breachedEntryList.SelectedItems.Count == 1)
+            if (breachedEntryList.SelectedItems == null || breachedEntryList.SelectedItems.Count != 1) return;
+
+            var selectedItem = breachedEntryList.SelectedItems[0];
+            var tag = (ItemData)selectedItem.Tag;
+            var entry = tag.Entity;
+            if (entry == null) return;
+
+            using (var pwForm = new KeePass.Forms.PwEntryForm())
             {
-                var tag = ((ItemData)breachedEntryList.SelectedItems[0].Tag);
-                var entry = tag.Entity;
-                var breach = tag.Breach;
-                if (entry != null)
+                pwForm.InitEx(entry, KeePass.Forms.PwEditMode.EditExistingEntry, pluginHost.Database, pluginHost.MainWindow.ClientIcons, false, false);
+                if (pwForm.ShowDialog(this) == DialogResult.OK)
                 {
-                    var pwForm = new KeePass.Forms.PwEntryForm();
-                    pwForm.InitEx(entry, KeePass.Forms.PwEditMode.EditExistingEntry, pluginHost.Database, pluginHost.MainWindow.ClientIcons, false, false);
-                    var thread = new Thread(() =>
-                    {
-                        if (pwForm.ShowDialog() == DialogResult.OK)
-                        {
-                            bool bUpdImg = pluginHost.Database.UINeedsIconUpdate;
-                            pluginHost.MainWindow.RefreshEntriesList(); // Update entry
-                            pluginHost.MainWindow.UpdateUI(false, null, bUpdImg, null, false, null, pwForm.HasModifiedEntry);
-                            breachedEntryList.SelectedItems[0].SubItems[0] = new ListViewItem.ListViewSubItem(breachedEntryList.SelectedItems[0], entry.Strings.ReadSafe(PwDefs.TitleField));
-                            breachedEntryList.SelectedItems[0].SubItems[1] = new ListViewItem.ListViewSubItem(breachedEntryList.SelectedItems[0], entry.Strings.ReadSafe(PwDefs.UserNameField));
-                            breachedEntryList.SelectedItems[0].SubItems[2] = new ListViewItem.ListViewSubItem(breachedEntryList.SelectedItems[0], entry.Strings.ReadSafe(PwDefs.UrlField));
-                            breachedEntryList.SelectedItems[0].SubItems[3] = new ListViewItem.ListViewSubItem(breachedEntryList.SelectedItems[0], entry.GetPasswordLastModified().ToShortDateString());
-                        }
-                        else
-                        {
-                            bool bUpdImg = pluginHost.Database.UINeedsIconUpdate;
-                            pluginHost.MainWindow.RefreshEntriesList(); // Update last access time
-                            pluginHost.MainWindow.UpdateUI(false, null, bUpdImg, null, false, null, false);
-                        }
-                    });
-                    thread.SetApartmentState(ApartmentState.STA);
-                    thread.IsBackground = true;
-                    thread.Start();
+                    var updateIcon = pluginHost.Database.UINeedsIconUpdate;
+                    pluginHost.MainWindow.RefreshEntriesList();
+                    pluginHost.MainWindow.UpdateUI(false, null, updateIcon, null, false, null, pwForm.HasModifiedEntry);
+                    selectedItem.SubItems[0].Text = entry.Strings.ReadSafe(PwDefs.TitleField);
+                    selectedItem.SubItems[1].Text = entry.Strings.ReadSafe(PwDefs.UserNameField);
+                    selectedItem.SubItems[2].Text = entry.Strings.ReadSafe(PwDefs.UrlField);
+                    selectedItem.SubItems[3].Text = entry.GetPasswordLastModified().ToShortDateString();
+                }
+                else
+                {
+                    var updateIcon = pluginHost.Database.UINeedsIconUpdate;
+                    pluginHost.MainWindow.RefreshEntriesList();
+                    pluginHost.MainWindow.UpdateUI(false, null, updateIcon, null, false, null, false);
                 }
             }
         }
 
-        [STAThread]
+
         private void breachedEntryList_MouseClick(object sender, MouseEventArgs e)
         {
             if (breachedEntryList.SelectedItems != null && breachedEntryList.SelectedItems.Count == 1)
             {
                 var tag = ((ItemData)breachedEntryList.SelectedItems[0].Tag);
-                var entry = tag.Entity;
                 var breach = tag.Breach;
 
                 if (breach != null)
@@ -139,7 +130,7 @@ namespace HaveIBeenPwned.UI
                     txt = regexMarkup.Replace(txt, string.Empty);
                     
                     // now unencode any html encoded stuff.
-                    txt = System.Web.HttpUtility.HtmlDecode(txt);
+                    txt = System.Net.WebUtility.HtmlDecode(txt);
 
                     this.breachDescriptionText.Text = txt;
                 }

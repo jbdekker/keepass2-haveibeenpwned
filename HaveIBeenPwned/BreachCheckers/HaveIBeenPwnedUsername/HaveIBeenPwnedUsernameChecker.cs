@@ -1,257 +1,246 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Windows.Forms;
-using KeePassLib;
-using System.Net.Http;
-using Newtonsoft.Json;
-using KeePass.Plugins;
-using System.Threading.Tasks;
-using System.Drawing;
 using System.Net;
+using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using HaveIBeenPwned.BreachCheckers;
 using KeePassExtensions;
-using System.Web;
+using KeePass.Plugins;
+using KeePassLib;
 using KeePassLib.Collections;
+using Newtonsoft.Json;
 
 namespace HaveIBeenPwned.BreachCheckers.HaveIBeenPwnedUsername
 {
     public class HaveIBeenPwnedUsernameChecker : BaseChecker
     {
-        // Number of attempts to retrieve the breaches/pastes API when the rate limit is hit repeatedly
         private const int DefaultRetries = 5;
-        private const string APIKEY = "hibp-api-key";
+        private const int RequestIntervalMilliseconds = 1600;
+        private const string ApiKeyHeader = "hibp-api-key";
+        private const string BreachedAccountUrl = "https://haveibeenpwned.com/api/v3/breachedaccount/";
+        private static readonly Regex ApiKeyEntryTitle = new Regex(
+            "^(hibp-?|haveibeenpwned)apikey$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         public HaveIBeenPwnedUsernameChecker(HttpClient httpClient, IPluginHost pluginHost)
             : base(httpClient, pluginHost)
         {
         }
 
-        public override Image BreachLogo
-        {
-            get { return Resources.hibp.ToBitmap(); }
-        }
-
-        public override string BreachTitle
-        {
-            get { return "Have I Been Pwned"; }
-        }
-
-        public async override Task<List<BreachedEntry>> CheckGroup(PwGroup group, bool expireEntries,
-            bool oldEntriesOnly, bool ignoreDeleted, bool ignoreExpired, IProgress<ProgressItem> progressIndicator,
+        public override async Task<List<BreachedEntry>> CheckGroup(
+            PwGroup group,
+            bool expireEntries,
+            bool oldEntriesOnly,
+            bool ignoreDeleted,
+            bool ignoreExpired,
+            IProgress<ProgressItem> progressIndicator,
             Func<bool> canContinue)
         {
-            progressIndicator.Report(new ProgressItem(0, "Searching for HaveIBeenPwned Api Key..."));
-            try
-            {
-                var apiKey = this.RetrieveApiKey();
-                this.client.DefaultRequestHeaders.Remove(APIKEY);
-                this.client.DefaultRequestHeaders.Add(APIKEY, apiKey);
-            }
-            catch (ApiKeyException e)
-            {
-                MessageBox.Show(e.Message, Resources.MessageTitle, MessageBoxButtons.OK);
-                return Enumerable.Empty<BreachedEntry>().ToList();
-            }
-
-            progressIndicator.Report(new ProgressItem(0, "Getting HaveIBeenPwned breach list..."));
+            progressIndicator.Report(new ProgressItem(0, "Searching for Have I Been Pwned API key..."));
+            var apiKey = RetrieveApiKey();
             var entries = group.GetEntries(true)
-                .Where(e => (!ignoreDeleted || !e.IsDeleted(pluginHost)) && (!ignoreExpired || !e.Expires)).ToArray();
-            var usernames = entries.Select(e => e.Strings.ReadSafe(PwDefs.UserNameField).Trim().ToLower()).Distinct();
-            var breaches = await this.GetBreaches(progressIndicator, usernames, canContinue);
+                .Where(e => (!ignoreDeleted || !e.IsDeleted(pluginHost)) && (!ignoreExpired || !e.Expires))
+                .ToArray();
+            var usernames = entries
+                .Select(e => e.Strings.ReadSafe(PwDefs.UserNameField).Trim())
+                .Where(IsQueryableUsername)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var accountsByDomain = BuildAccountIndex(entries);
+            var breaches = await GetBreaches(progressIndicator, usernames, apiKey, canContinue);
             var breachedEntries = new List<BreachedEntry>();
 
-            await Task.Run(() =>
+            foreach (var breach in breaches)
             {
-                foreach (var breachGrp in breaches.GroupBy(x => x.Username))
+                if (!canContinue()) break;
+
+                PwEntry pwEntry = null;
+                Dictionary<string, PwEntry> accounts;
+                if (!string.IsNullOrWhiteSpace(breach.Domain) && !string.IsNullOrWhiteSpace(breach.Username) &&
+                    accountsByDomain.TryGetValue(breach.Domain, out accounts))
                 {
-                    var username = breachGrp.Key;
-                    var oldestUpdate = entries.Min(e => e.GetPasswordLastModified());
-
-                    foreach (var breach in breachGrp)
-                    {
-                        if (oldEntriesOnly && oldestUpdate >= breach.BreachDate)
-                        {
-                            continue;
-                        }
-
-                        var pwEntry =
-                            string.IsNullOrWhiteSpace(breach.Domain)
-                                ? null
-                                : entries.FirstOrDefault(e =>
-                                    e.GetUrlDomain() == breach.Domain && breach.Username ==
-                                    e.Strings.ReadSafe(PwDefs.UserNameField).Trim().ToLower());
-                        if (pwEntry != null)
-                        {
-                            var lastModified = pwEntry.GetPasswordLastModified();
-                            if (oldEntriesOnly && lastModified >= breach.BreachDate)
-                            {
-                                continue;
-                            }
-
-                            if (expireEntries)
-                            {
-                                ExpireEntry(pwEntry);
-                            }
-                        }
-
-                        breachedEntries.Add(new BreachedEntry(pwEntry, breach));
-                    }
+                    accounts.TryGetValue(breach.Username, out pwEntry);
                 }
-            });
+
+                if (pwEntry != null && oldEntriesOnly && pwEntry.GetPasswordLastModified() >= breach.BreachDate)
+                {
+                    continue;
+                }
+
+                breachedEntries.Add(new BreachedEntry(pwEntry, breach));
+                if (pwEntry != null && expireEntries) ExpireEntry(pwEntry);
+            }
 
             return breachedEntries;
         }
 
-        private async Task<List<HaveIBeenPwnedUsernameEntry>> GetBreaches(IProgress<ProgressItem> progressIndicator,
-            IEnumerable<string> usernames, Func<bool> canContinue)
+        private async Task<List<HaveIBeenPwnedEntry>> GetBreaches(
+            IProgress<ProgressItem> progressIndicator,
+            string[] usernames,
+            string apiKey,
+            Func<bool> canContinue)
         {
-            List<HaveIBeenPwnedUsernameEntry> allBreaches = new List<HaveIBeenPwnedUsernameEntry>();
-            var filteredUsernames = usernames.Where(u => !string.IsNullOrWhiteSpace(u) && !u.StartsWith("{REF:"));
-            int counter = 0;
-            foreach (var username in filteredUsernames)
+            var allBreaches = new List<HaveIBeenPwnedEntry>();
+
+            for (var i = 0; i < usernames.Length; i++)
             {
-                if (!canContinue())
-                {
-                    break;
-                }
+                if (!canContinue()) break;
 
-                counter++;
-                progressIndicator.Report(new ProgressItem((uint) ((double) counter / filteredUsernames.Count() * 100),
-                    string.Format("Checking \"{0}\" for breaches", username)));
-                try
-                {            
-                    var breaches = await GetBreachesForUserName(HttpUtility.UrlEncode(username), DefaultRetries);
-                    if (breaches != null)
-                    {
-                        allBreaches.AddRange(breaches);
-                    }
-                }
-                catch (HaveIBeenPwnedAbortException)
-                {
-                    // error was already reported to user.
-                    break;
-                }
+                var username = usernames[i];
+                var progress = (uint)(((i + 1) * 100) / usernames.Length);
+                progressIndicator.Report(new ProgressItem(progress, string.Format("Checking \"{0}\" for breaches", username)));
+                allBreaches.AddRange(await GetBreachesForUserName(username, apiKey, canContinue));
 
-                // hibp has a rate limit of 1500ms
-                await Task.Delay(1600);
+                if (i + 1 < usernames.Length && canContinue())
+                {
+                    await Task.Delay(RequestIntervalMilliseconds);
+                }
             }
-
 
             return allBreaches;
         }
 
-        private async Task<IEnumerable<HaveIBeenPwnedUsernameEntry>> GetBreachesForUserName(string username,
-            int remainingRetries)
+        private async Task<List<HaveIBeenPwnedEntry>> GetBreachesForUserName(
+            string username,
+            string apiKey,
+            Func<bool> canContinue)
         {
-            IEnumerable<HaveIBeenPwnedUsernameEntry> breaches = Enumerable.Empty<HaveIBeenPwnedUsernameEntry>();
-            HttpResponseMessage response = null;
-            try
+            for (var retryCount = 0; ; retryCount++)
             {
-                response = await client.GetAsync(
-                    new Uri("https://haveibeenpwned.com/api/v3/breachedaccount/" + username + "?truncateResponse=false"));
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
+                if (!canContinue()) return new List<HaveIBeenPwnedEntry>();
 
-            if (response.IsSuccessStatusCode)
-            {
-                var jsonString = await response.Content.ReadAsStringAsync();
-                breaches = JsonConvert.DeserializeObject<List<HaveIBeenPwnedUsernameEntry>>(jsonString);
-                foreach (var b in breaches)
+                TimeSpan retryDelay = TimeSpan.Zero;
+                var shouldRetry = false;
+                var requestUrl = BreachedAccountUrl + Uri.EscapeDataString(username) + "?truncateResponse=false";
+                using (var request = new HttpRequestMessage(HttpMethod.Get, requestUrl))
                 {
-                    b.Username = HttpUtility.UrlDecode(username);
+                    request.Headers.Add(ApiKeyHeader, apiKey);
+
+                    using (var response = await client.SendAsync(request))
+                    {
+                        if (response.StatusCode == HttpStatusCode.NotFound)
+                        {
+                            return new List<HaveIBeenPwnedEntry>();
+                        }
+
+                        if (response.StatusCode == HttpStatusCode.Unauthorized)
+                        {
+                            throw new ApiKeyException("Have I Been Pwned rejected the API key. Check the key stored in the hibp-apikey entry.");
+                        }
+
+                        if ((int)response.StatusCode == 429)
+                        {
+                            if (retryCount >= DefaultRetries || !TryGetRetryDelay(response, out retryDelay))
+                            {
+                                throw new HaveIBeenPwnedAbortException("HIBP rate limit was exceeded without a usable Retry-After value.");
+                            }
+
+                            shouldRetry = true;
+                        }
+                        else
+                        {
+                            response.EnsureSuccessStatusCode();
+                            var json = await response.Content.ReadAsStringAsync();
+                            var breaches = JsonConvert.DeserializeObject<List<HaveIBeenPwnedEntry>>(json);
+                            if (breaches == null) throw new InvalidDataException("HIBP returned an empty account breach response.");
+
+                            foreach (var breach in breaches)
+                            {
+                                breach.Username = username;
+                            }
+
+                            return breaches;
+                        }
+                    }
                 }
+
+                if (shouldRetry) await Task.Delay(retryDelay);
             }
-            else if ((int) response.StatusCode == 429) // The Rate limit of our API Key was exceeded
+        }
+
+        private static bool TryGetRetryDelay(HttpResponseMessage response, out TimeSpan retryDelay)
+        {
+            retryDelay = TimeSpan.Zero;
+            var retryAfter = response.Headers.RetryAfter;
+            if (retryAfter == null) return false;
+
+            if (retryAfter.Delta.HasValue)
             {
-                var whenToRetry = response.Headers.RetryAfter.Delta;
-
-                if (whenToRetry.HasValue == false)
-                {
-                    MessageBox.Show(
-                        "The Rate limit for haveibeenpwned.com was exceeded.\n" +
-                        "Unfortunately there was no hint when to retry.\n" +
-                        "Please try the website manually.",
-                        Resources.MessageTitle,
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-
-                    throw new HaveIBeenPwnedAbortException("Rate limit exceeded, missing retry-after header.");
-                }
-                else if (remainingRetries > 0)
-                {
-                    await Task.Delay(whenToRetry.Value.Add(TimeSpan.FromMilliseconds(100)));
-                    return await this.GetBreachesForUserName(username, remainingRetries--);
-                }
-                else
-                {
-                    // give up to respect the rate limit after several failed attempts, as there is most likely running another process trying to check the API
-                    // the specification does not detail what is considered "consistently exceeded" so I hope 5 tries is a reasonable amount
-                    MessageBox.Show(
-                        "The rate limit for haveibeenpwned.com has been exceeded five times in a row.\n" +
-                        "Please make sure there is no other process querying the API with your api key.",
-                        Resources.MessageTitle,
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-
-                    throw new HaveIBeenPwnedAbortException("Rate limit exceeded five times.");
-                }
+                retryDelay = retryAfter.Delta.Value;
             }
-            else if (response.StatusCode == HttpStatusCode.Unauthorized)
+            else if (retryAfter.Date.HasValue)
             {
-                // Further Requests are useless, as we will always get the Unauthorized Return code.
-                DialogResult dialogResult = MessageBox.Show(
-                    "Unable to check haveibeenpwned.com. Your api key is invalid.",
-                    Resources.MessageTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
-
-                throw new HaveIBeenPwnedAbortException("Invalid Api Key");
+                retryDelay = retryAfter.Date.Value - DateTimeOffset.UtcNow;
             }
-            else if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+            else
             {
-                DialogResult dialogButton = MessageBox.Show(
-                    string.Format("Unable to check haveibeenpwned.com (returned Status: {0})", response.StatusCode),
-                    Resources.MessageTitle, MessageBoxButtons.OKCancel, MessageBoxIcon.Error);
-                if (dialogButton == DialogResult.Cancel)
-                {
-                    throw new HaveIBeenPwnedAbortException(
-                        string.Format("Unable to check haveibeenpwned.com (returned Status: {0})",
-                            response.StatusCode));
-                }
+                return false;
             }
 
-            return breaches;
+            if (retryDelay < TimeSpan.Zero) retryDelay = TimeSpan.Zero;
+            retryDelay += TimeSpan.FromMilliseconds(100);
+            return true;
+        }
+
+        private static Dictionary<string, Dictionary<string, PwEntry>> BuildAccountIndex(IEnumerable<PwEntry> entries)
+        {
+            var accountsByDomain = new Dictionary<string, Dictionary<string, PwEntry>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var entry in entries)
+            {
+                var domain = entry.GetUrlDomain();
+                var username = entry.Strings.ReadSafe(PwDefs.UserNameField).Trim();
+                if (string.IsNullOrWhiteSpace(domain) || !IsQueryableUsername(username)) continue;
+
+                Dictionary<string, PwEntry> accounts;
+                if (!accountsByDomain.TryGetValue(domain, out accounts))
+                {
+                    accounts = new Dictionary<string, PwEntry>(StringComparer.OrdinalIgnoreCase);
+                    accountsByDomain.Add(domain, accounts);
+                }
+
+                if (!accounts.ContainsKey(username)) accounts.Add(username, entry);
+            }
+
+            return accountsByDomain;
+        }
+
+        private static bool IsQueryableUsername(string username)
+        {
+            return !string.IsNullOrWhiteSpace(username) && !username.StartsWith("{REF:", StringComparison.OrdinalIgnoreCase);
         }
 
         private string RetrieveApiKey()
         {
             const string regex = "^(hibp-?|haveibeenpwned)apikey$";
             var candidates = new PwObjectList<PwEntry>();
-            var searchParameters = new SearchParameters()
+            var searchParameters = new SearchParameters
             {
                 SearchInTitles = true,
-                SearchString = "apikey",
+                SearchString = "apikey"
             };
-            this.pluginHost.Database.RootGroup.SearchEntries(searchParameters, candidates);
+            pluginHost.Database.RootGroup.SearchEntries(searchParameters, candidates);
 
-            var apiKeys = candidates.Where(x => Regex.IsMatch(x.Strings.ReadSafe(PwDefs.TitleField), regex, RegexOptions.IgnoreCase));
+            var apiKeys = candidates
+                .Where(x => ApiKeyEntryTitle.IsMatch(x.Strings.ReadSafe(PwDefs.TitleField)))
+                .ToArray();
 
-            if (apiKeys.Count() > 1)
+            if (apiKeys.Length > 1)
             {
-                throw new ApiKeyException(string.Format("Found more than one api key matching the pattern: {0}", regex));
+                throw new ApiKeyException(string.Format("Found more than one API key matching the pattern: {0}", regex));
             }
-            else if (apiKeys.Any() == false)
+
+            if (apiKeys.Length == 0)
             {
-                throw new ApiKeyException("No API Key found. Please create an entry named \"hibp-apikey\" in your database\n" +
-                                          "and set its password to the API key obtained from https://haveibeenpwned.com/API/Key");
+                throw new ApiKeyException("No API key found. Create an entry named \"hibp-apikey\" and set its password to the key from https://haveibeenpwned.com/API/Key.");
             }
-            else
-            {
-                var key = apiKeys.Single();
-                return key.Strings.ReadSafe(PwDefs.PasswordField);
-            }
+
+            var apiKey = apiKeys[0].Strings.ReadSafe(PwDefs.PasswordField);
+            if (string.IsNullOrWhiteSpace(apiKey)) throw new ApiKeyException("The hibp-apikey entry has an empty password.");
+            return apiKey;
         }
     }
 }

@@ -1,101 +1,94 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Windows.Forms;
-using KeePassLib;
 using System.Net.Http;
-using Newtonsoft.Json;
-using KeePass.Plugins;
 using System.Threading.Tasks;
-using System.Drawing;
+using HaveIBeenPwned.BreachCheckers;
 using KeePassExtensions;
+using KeePass.Plugins;
+using KeePassLib;
+using Newtonsoft.Json;
 
 namespace HaveIBeenPwned.BreachCheckers.HaveIBeenPwnedSite
 {
     public class HaveIBeenPwnedSiteChecker : BaseChecker
     {
+        private const string BreachListUrl = "https://haveibeenpwned.com/api/v3/breaches";
+
         public HaveIBeenPwnedSiteChecker(HttpClient httpClient, IPluginHost pluginHost)
             : base(httpClient, pluginHost)
         {
         }
 
-        public override Image BreachLogo
+        public override async Task<List<BreachedEntry>> CheckGroup(
+            PwGroup group,
+            bool expireEntries,
+            bool oldEntriesOnly,
+            bool ignoreDeleted,
+            bool ignoreExpired,
+            IProgress<ProgressItem> progressIndicator,
+            Func<bool> canContinue)
         {
-            get { return Resources.hibp.ToBitmap(); }
-        }
+            progressIndicator.Report(new ProgressItem(0, "Getting Have I Been Pwned breach list..."));
+            var breaches = await GetBreaches();
+            var breachesByDomain = new Dictionary<string, List<HaveIBeenPwnedEntry>>(StringComparer.OrdinalIgnoreCase);
 
-        public override string BreachTitle
-        {
-            get { return "Have I Been Pwned"; }
-        }
+            foreach (var breach in breaches)
+            {
+                if (string.IsNullOrWhiteSpace(breach.Domain)) continue;
 
-        public async override Task<List<BreachedEntry>> CheckGroup(PwGroup group, bool expireEntries, bool oldEntriesOnly, bool ignoreDeleted, bool ignoreExpired, IProgress<ProgressItem> progressIndicator, Func<bool> canContinue)
-        {
-            progressIndicator.Report(new ProgressItem(0, "Getting HaveIBeenPwned breach list..."));
-            var breaches = await GetBreaches(progressIndicator);
-            var entries = group.GetEntries(true).Where(e => (!ignoreDeleted || !e.IsDeleted(pluginHost)) && (!ignoreExpired || !e.Expires)).ToArray();
+                List<HaveIBeenPwnedEntry> domainBreaches;
+                if (!breachesByDomain.TryGetValue(breach.Domain, out domainBreaches))
+                {
+                    domainBreaches = new List<HaveIBeenPwnedEntry>();
+                    breachesByDomain.Add(breach.Domain, domainBreaches);
+                }
+
+                domainBreaches.Add(breach);
+            }
+
+
+            var entries = group.GetEntries(true)
+                .Where(e => (!ignoreDeleted || !e.IsDeleted(pluginHost)) && (!ignoreExpired || !e.Expires))
+                .ToArray();
             var breachedEntries = new List<BreachedEntry>();
 
-            uint counter = 0;
-            var entryCount = entries.Length;
-            await Task.Run(() =>
+            foreach (var entry in entries)
             {
-                foreach (var entry in entries)
+                if (!canContinue()) break;
+
+                var domain = entry.GetUrlDomain();
+                List<HaveIBeenPwnedEntry> domainBreaches;
+                if (string.IsNullOrEmpty(domain) || !breachesByDomain.TryGetValue(domain, out domainBreaches)) continue;
+
+                var lastModified = oldEntriesOnly ? entry.GetPasswordLastModified() : DateTime.MinValue;
+                var addedBreach = false;
+                foreach (var breach in domainBreaches)
                 {
-                    if(!canContinue())
-                    {
-                        break;
-                    }
+                    if (!canContinue()) break;
+                    if (oldEntriesOnly && lastModified >= breach.BreachDate) continue;
 
-                    var url = entry.GetUrlDomain();
-
-                    var userName = entry.Strings.ReadSafe(PwDefs.UserNameField);
-                    var lastModified = entry.GetPasswordLastModified();
-                    if (!string.IsNullOrEmpty(url))
-                    {
-                        var domainBreaches = breaches.Where(b => !string.IsNullOrWhiteSpace(b.Domain) && url == b.Domain && (!oldEntriesOnly || lastModified < b.BreachDate)).OrderBy(b => b.BreachDate);
-                        if (domainBreaches.Any())
-                        {
-                            breachedEntries.Add(new BreachedEntry(entry, domainBreaches.Last()));
-                            if (expireEntries)
-                            {
-                                ExpireEntry(entry);
-                            }
-                        }
-                    }
-                    // this checker is so quick it probably doesn't need to report progress
-                    //progressIndicator.Report(new ProgressItem((uint)((double)counter / entryCount * 100), string.Format("Checking {0} for breaches", url)));
+                    breachedEntries.Add(new BreachedEntry(entry, breach));
+                    addedBreach = true;
                 }
-                counter++;
-            });
+
+                if (expireEntries && addedBreach) ExpireEntry(entry);
+            }
 
             return breachedEntries;
         }
 
-        private async Task<List<HaveIBeenPwnedSiteEntry>> GetBreaches(IProgress<ProgressItem> progressIndicator)
-        {            
-            List<HaveIBeenPwnedSiteEntry> breaches = null;
-            HttpResponseMessage response = null;
-            try
+        private async Task<List<HaveIBeenPwnedEntry>> GetBreaches()
+        {
+            using (var response = await client.GetAsync(BreachListUrl))
             {
-                response = await client.GetAsync(new Uri("https://haveibeenpwned.com/api/v2/breaches"));
+                response.EnsureSuccessStatusCode();
+                var json = await response.Content.ReadAsStringAsync();
+                var breaches = JsonConvert.DeserializeObject<List<HaveIBeenPwnedEntry>>(json);
+                if (breaches == null) throw new InvalidDataException("HIBP returned an empty breach catalogue.");
+                return breaches;
             }
-            catch(Exception ex)
-            {
-                throw ex;
-            }
-
-            if (response.IsSuccessStatusCode)
-            {
-                var jsonString = await response.Content.ReadAsStringAsync();
-                breaches = JsonConvert.DeserializeObject<List<HaveIBeenPwnedSiteEntry>>(jsonString);
-            }
-            else
-            {
-                MessageBox.Show(string.Format("Unable to check haveibeenpwned.com (returned Status: {0})", response.StatusCode), Resources.MessageTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-                        
-            return breaches;
         }
     }
 }

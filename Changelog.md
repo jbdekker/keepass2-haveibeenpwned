@@ -6,6 +6,9 @@
 * Restore Newtonsoft.Json 6.0.4 from NuGet instead of tracking the dependency binary.
 * Use KeePass.exe to create PLGX files, set C# 5 and accurate PLGX prerequisites, and validate builds on pull requests.
 * Follow KeePass initialization, menu ownership, termination, and update URL conventions.
+* Remove the obsolete Cloudbleed checker and its embedded icon data.
+* Parse HIBP account catalogue and rate-limit responses; use padded password-range requests.
+* Keep KeePass entry editing on the UI thread and remove unused checker abstraction members.
 
 ### v1.3.6 - 2019-11-02
 * Fix broken version number on previous release

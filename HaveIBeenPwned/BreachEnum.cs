@@ -5,8 +5,6 @@
         [CheckerType(Name = "Have I Been Pwned", Type = CheckTypeEnum.SiteDomain, Description = "This checker will compare the domains of your entries against the Have I Been Pwned breach list.")]
         HIBPSite,
 
-        [CheckerType(Name = "Cloudbleed", Type = CheckTypeEnum.SiteDomain, Description = "This checker will compare the domains of your entries against the cloudbleed breach list.")]
-        CloudBleedSite,
 
         [CheckerType(Name = "Have I Been Pwned", Type = CheckTypeEnum.Username, Description = "This checker will compare the usernames of your entries against the Have I Been Pwned breach list")]
         HIBPUsername,
