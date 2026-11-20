@@ -2,9 +2,11 @@
 
 **KeePass 2.x plugin to check all entries with URLs against various breach lists.**
 
-**Download plgx from [here](https://github.com/andrew-schofield/keepass2-haveibeenpwned/raw/master/HaveIBeenPwned.plgx).**
+**Download the PLGX from the [latest release](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/HaveIBeenPwned.plgx).**
 
-**Mono users can download `HaveIBeenPwned.dll` and `Newtonsoft.Json.dll` from the [latest release](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest).**
+**Mono users can download [HaveIBeenPwned.dll](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/HaveIBeenPwned.dll) and [Newtonsoft.Json.dll](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/Newtonsoft.Json.dll) from the latest release.**
+
+Main-branch builds are available as `HaveIBeenPwned-plgx` and `HaveIBeenPwned-mono` artifacts on the [Build PLGX workflow](https://github.com/jbdekker/keepass2-haveibeenpwned/actions/workflows/build-plgx.yml).
 Mono users may find they need to install their distro equivalent of `mono-complete` for the plugin to work properly.
 
 ## Currently Supported Breach Lists
