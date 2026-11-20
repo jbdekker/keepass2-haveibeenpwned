@@ -1,0 +1,89 @@
+name: Build PLGX
+
+on:
+  push:
+    branches:
+      - main
+
+    tags:
+      - '*'
+permissions:
+  contents: read
+
+jobs:
+  build:
+    outputs:
+      release_tag: ${{ steps.release_tag.outputs.tag }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify tag points to main
+        id: release_tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $branches = git branch --remote --contains $env:GITHUB_SHA | ForEach-Object { $_.Trim().TrimStart('*').Trim() }
+          if ($branches -notcontains 'origin/main') {
+            throw "Tag $env:GITHUB_REF_NAME does not point to a commit on origin/main."
+          }
+          "tag=$env:GITHUB_REF_NAME" >> $env:GITHUB_OUTPUT
+
+      - uses: NuGet/setup-nuget@v2
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Install KeePass 2.34
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'KeePass-2.34.zip'
+          $extractPath = Join-Path $env:RUNNER_TEMP 'KeePass-2.34'
+          Invoke-WebRequest -Uri 'https://downloads.sourceforge.net/project/keepass/KeePass%202.x/2.34/KeePass-2.34.zip' -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extractPath -Force
+
+          $keePassExe = Get-ChildItem -Path $extractPath -Filter KeePass.exe -Recurse | Select-Object -First 1
+          if (-not $keePassExe) {
+            throw 'KeePass.exe was not found in the KeePass 2.34 archive.'
+          }
+
+          $installPath = Join-Path ${env:ProgramFiles(x86)} 'KeePass Password Safe 2'
+          New-Item -ItemType Directory -Force -Path $installPath | Out-Null
+          Copy-Item $keePassExe.FullName (Join-Path $installPath 'KeePass.exe') -Force
+
+      - name: Restore NuGet packages
+        run: nuget restore HaveIBeenPwned.sln
+
+      - name: Build PLGX
+        run: |
+          msbuild HaveIBeenPwned.sln /target:Clean /m
+          msbuild HaveIBeenPwned.sln /p:Configuration=ReleasePlgx /m
+          Copy-Item HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.plgx .\HaveIBeenPwned.plgx
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HaveIBeenPwned-plgx
+          path: HaveIBeenPwned.plgx
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') && needs.build.outputs.release_tag != ''
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: HaveIBeenPwned-plgx
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.release_tag }}
+          files: dist/HaveIBeenPwned.plgx
+          generate_release_notes: true
