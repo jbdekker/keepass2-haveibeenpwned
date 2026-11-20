@@ -14,7 +14,7 @@ jobs:
   build:
     outputs:
       release_tag: ${{ steps.release_tag.outputs.tag }}
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       KEEPASS_VERSION: ${{ vars.KEEPASS_VERSION || '2.62' }}
     steps:
@@ -74,11 +74,17 @@ jobs:
         run: nuget restore HaveIBeenPwned.sln
 
       - name: Build PLGX
+        shell: pwsh
         run: |
           msbuild HaveIBeenPwned.sln /target:Clean /m
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSBuild clean failed with exit code $LASTEXITCODE."
+          }
           msbuild HaveIBeenPwned.sln /p:Configuration=ReleasePlgx /m
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSBuild ReleasePlgx failed with exit code $LASTEXITCODE."
+          }
           Copy-Item HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.plgx .\HaveIBeenPwned.plgx
-        shell: pwsh
 
       - uses: actions/upload-artifact@v7
         with:
