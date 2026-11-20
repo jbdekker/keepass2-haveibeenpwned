@@ -15,8 +15,10 @@ jobs:
     outputs:
       release_tag: ${{ steps.release_tag.outputs.tag }}
     runs-on: windows-latest
+    env:
+      KEEPASS_VERSION: ${{ vars.KEEPASS_VERSION || '2.62' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 0
@@ -32,26 +34,41 @@ jobs:
           }
           "tag=$env:GITHUB_REF_NAME" >> $env:GITHUB_OUTPUT
 
-      - uses: NuGet/setup-nuget@v2
+      - uses: NuGet/setup-nuget@v4.0
 
-      - uses: microsoft/setup-msbuild@v2
+      - uses: microsoft/setup-msbuild@v3
 
-      - name: Install KeePass 2.34
+      - name: Install configured KeePass version
         shell: pwsh
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'KeePass-2.34.zip'
-          $extractPath = Join-Path $env:RUNNER_TEMP 'KeePass-2.34'
-          Invoke-WebRequest -Uri 'https://downloads.sourceforge.net/project/keepass/KeePass%202.x/2.34/KeePass-2.34.zip' -OutFile $archive
-          Expand-Archive -Path $archive -DestinationPath $extractPath -Force
+          $ErrorActionPreference = 'Stop'
+          try {
+            $archive = Join-Path $env:RUNNER_TEMP "KeePass-${env:KEEPASS_VERSION}.zip"
+            $extractPath = Join-Path $env:RUNNER_TEMP "KeePass-${env:KEEPASS_VERSION}"
+            $downloadUrl = "https://downloads.sourceforge.net/project/keepass/KeePass%202.x/${env:KEEPASS_VERSION}/KeePass-${env:KEEPASS_VERSION}.zip"
 
-          $keePassExe = Get-ChildItem -Path $extractPath -Filter KeePass.exe -Recurse | Select-Object -First 1
-          if (-not $keePassExe) {
-            throw 'KeePass.exe was not found in the KeePass 2.34 archive.'
+            Write-Host "Downloading KeePass $env:KEEPASS_VERSION"
+            & curl.exe --fail --location --retry 3 --silent --show-error --output $archive $downloadUrl
+            if ($LASTEXITCODE -ne 0) {
+              throw "KeePass download failed with exit code $LASTEXITCODE."
+            }
+            Expand-Archive -Path $archive -DestinationPath $extractPath -Force
+
+            $keePassExe = Join-Path $extractPath 'KeePass.exe'
+            if (-not (Test-Path $keePassExe -PathType Leaf)) {
+              throw "KeePass.exe was not found in the KeePass $env:KEEPASS_VERSION archive."
+            }
+
+            $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+            $installPath = Join-Path $programFilesX86 'KeePass Password Safe 2'
+            New-Item -ItemType Directory -Force -Path $installPath | Out-Null
+            Copy-Item $keePassExe (Join-Path $installPath 'KeePass.exe') -Force
           }
-
-          $installPath = Join-Path ${env:ProgramFiles(x86)} 'KeePass Password Safe 2'
-          New-Item -ItemType Directory -Force -Path $installPath | Out-Null
-          Copy-Item $keePassExe.FullName (Join-Path $installPath 'KeePass.exe') -Force
+          catch {
+            Write-Host ($_ | Format-List * -Force | Out-String)
+            Write-Host $_.ScriptStackTrace
+            throw
+          }
 
       - name: Restore NuGet packages
         run: nuget restore HaveIBeenPwned.sln
@@ -63,7 +80,7 @@ jobs:
           Copy-Item HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.plgx .\HaveIBeenPwned.plgx
         shell: pwsh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: HaveIBeenPwned-plgx
           path: HaveIBeenPwned.plgx
@@ -77,12 +94,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: HaveIBeenPwned-plgx
           path: dist
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3.0.4
         with:
           tag_name: ${{ needs.build.outputs.release_tag }}
           files: dist/HaveIBeenPwned.plgx
