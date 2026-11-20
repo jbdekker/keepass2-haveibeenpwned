@@ -11,12 +11,10 @@ Main-branch and pull-request builds are available as `HaveIBeenPwned-plgx` and `
 ## Currently Supported Breach Lists
 
 ### Site/Domain based
-* [Have I Been Pwned (HIBP)](https://haveibeenpwned.com/) - Checks the domains of any entries against the Have I Been Pwned? list curated by Troy Hunt.
-* [Cloudbleed vulnerability list](https://github.com/pirate/sites-using-cloudflare) - Checks the domains of any entries that appear in the Cloudbleed vulnerability list. This has potential to produce false positives due to the way this list was produced.
+* [Have I Been Pwned (HIBP)](https://haveibeenpwned.com/) - Checks entry URL domains against HIBP's public breach catalogue.
 
 ### Username based
-* [Have I Been Pwned (HIBP)](https://haveibeenpwned.com/) - Checks the usernames of any entries against the Have I Been Pwned? list curated by (Troy Hunt)[https://www.troyhunt.com/]. This service requires you to register for an API key via [https://haveibeenpwned.com/API/Key
-](https://haveibeenpwned.com/API/Key). The cost of API key is $3.50 per month (Credit card required).
+* [Have I Been Pwned (HIBP)](https://haveibeenpwned.com/) - Checks the account identifiers in entry usernames against HIBP's breach catalogue. An API key is required.
 
 ### Password based
 * [Have I Been Pwned (HIBP)](https://haveibeenpwned.com/) - Checks the passwords of any entries against the Have I Been Pwned? list curated by Troy Hunt.
@@ -35,14 +33,14 @@ Main-branch and pull-request builds are available as `HaveIBeenPwned-plgx` and `
 
 ## Building
 
-The project targets .NET Framework 4.5.2 and C# 5. Install the official KeePass ZIP under `C:\Program Files (x86)\KeePass Password Safe 2`, plus the .NET Framework targeting pack, NuGet CLI, and MSBuild. Run `build.bat` from a Developer Command Prompt. It restores packages, builds the DLLs, cleans `bin` and `obj`, then creates the PLGX with the official `KeePass.exe --plgx-create` command.
+The project targets .NET Framework 4.8 and C# 5. Install the official KeePass ZIP under `C:\Program Files (x86)\KeePass Password Safe 2`, plus the .NET Framework 4.8 targeting pack, NuGet CLI, and MSBuild. Run `build.bat` from a Developer Command Prompt. It restores packages, builds the DLLs, cleans `bin` and `obj`, then creates the PLGX with the official `KeePass.exe --plgx-create` command.
 
 ## Notes
 
 * HaveIBeenPwned breach data is downloaded every time the check is run as the data file is small.
-* Cloudbleed data is only downloaded once and then cached here: `%PROGRAMDATA%\KeePass\cloudbleed.txt` (Windows) or `%LOCALAPPDATA%\KeePass\cloudbleed.txt` (Linux) as this is currently a ~70MB download. If you wish to refresh the cache, simply delete this file.
 * As KeePass doesn't have a native method for determining when an entry's password was last changed, keepass2-haveibeenpwned will use the history entries if any exist and compare their passwords.
-* Username/password checking could take a while to complete as HIBP applies a rate limit on requests, which means we can only check one username/password every 1.6s
+* Account checks query HIBP sequentially with a 1.6-second pause between requests and honor `Retry-After` responses.
+* Password checks use HIBP's padded range API and compare full hashes locally.
 * Common usernames (such as admin & root) are not removed from the check and will likely result in false positives in your results, however these should be immediately obvious.
 
 ## Donate

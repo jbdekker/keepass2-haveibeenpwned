@@ -63,28 +63,24 @@ namespace KeePassExtensions
         /// <returns></returns>
         public static string GetUrlDomain(this PwEntry entry)
         {
-            var url = entry.Strings.ReadSafe(PwDefs.UrlField).ToLower();
-            if (string.IsNullOrWhiteSpace(url))
+            var url = entry.Strings.ReadSafe(PwDefs.UrlField).Trim();
+            if (string.IsNullOrWhiteSpace(url)) return string.Empty;
+
+            if (url.IndexOf("://", StringComparison.Ordinal) < 0)
             {
-                return string.Empty;
+                url = "http://" + url;
             }
 
-            if (!url.Contains("://"))
+            Uri uri;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri)) return string.Empty;
+
+            var domain = uri.DnsSafeHost;
+            if (domain.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
             {
-                // add http as a fallback protocol
-                url = string.Format("http://{0}", url);
+                domain = domain.Substring(4);
             }
 
-            try
-            {
-                var domain = new Uri(url).DnsSafeHost;
-                if (domain.StartsWith("www."))
-                {
-                    domain = domain.Substring(4);
-                }
-                return domain;
-            }
-            catch (UriFormatException) { return string.Empty; }
+            return domain.ToLowerInvariant();
         }
 
         /// <summary>

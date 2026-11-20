@@ -35,7 +35,7 @@ msbuild "%base%HaveIBeenPwned.sln" /target:Clean /m
 if errorlevel 1 exit /b 1
 
 if exist "%base%HaveIBeenPwned.plgx" del /q "%base%HaveIBeenPwned.plgx"
-"%keepassExe%" --plgx-create "%base%HaveIBeenPwned" --plgx-prereq-kp:2.34 --plgx-prereq-net:4.5.2
+"%keepassExe%" --plgx-create "%base%HaveIBeenPwned" --plgx-prereq-kp:2.34 --plgx-prereq-net:4.8
 if errorlevel 1 exit /b 1
 if not exist "%base%HaveIBeenPwned.plgx" (
   echo KeePass did not create HaveIBeenPwned.plgx.
