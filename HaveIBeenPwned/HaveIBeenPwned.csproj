@@ -9,7 +9,7 @@
         <DotNetVersion>4.0</DotNetVersion>
       </Prerequisites>
     </PlgxConfiguration>
-    <PlgxToolDir>$(MSBuildProjectDirectory)\..\packages\PlgxTool.1.0.0\tools\</PlgxToolDir>
+    <PlgxToolDir>$(MSBuildProjectDirectory)\packages\PlgxTool.1.0.0\tools\</PlgxToolDir>
     <ReleaseVersion>0.7.11</ReleaseVersion>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
@@ -61,7 +61,7 @@
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=6.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>.\Newtonsoft.Json.dll</HintPath>
+      <HintPath>packages\Newtonsoft.Json.6.0.4\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -154,12 +154,12 @@
   <Target Name="AfterBuild" Condition="'$(Configuration)' == 'ReleasePlgx'">
     <CallTarget Targets="BuildPlgx" />
   </Target>
-  <Import Project="..\packages\PlgxTool.1.0.0\build\PlgxTool.targets" Condition="Exists('..\packages\PlgxTool.1.0.0\build\PlgxTool.targets')" />
+  <Import Project="packages\PlgxTool.1.0.0\build\PlgxTool.targets" Condition="Exists('packages\PlgxTool.1.0.0\build\PlgxTool.targets')" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\packages\PlgxTool.1.0.0\build\PlgxTool.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\PlgxTool.1.0.0\build\PlgxTool.targets'))" />
+    <Error Condition="!Exists('packages\PlgxTool.1.0.0\build\PlgxTool.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\PlgxTool.1.0.0\build\PlgxTool.targets'))" />
   </Target>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

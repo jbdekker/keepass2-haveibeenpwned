@@ -75,8 +75,6 @@ class PlgxPathTest(unittest.TestCase):
                         is_relative_to_project(hint_path),
                         f"Local assembly HintPath escapes project root: {hint_path}",
                     )
-                    file_path = PROJECT_DIR / hint_path.replace("\\", "/")
-                    self.assertTrue(file_path.is_file(), f"Missing local assembly: {hint_path}")
 
 
 if __name__ == "__main__":

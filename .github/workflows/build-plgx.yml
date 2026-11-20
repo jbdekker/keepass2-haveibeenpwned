@@ -69,11 +69,11 @@ jobs:
             throw
           }
 
-      - name: Test PLGX project paths
-        run: python -m unittest discover -s tests -v
-
       - name: Restore NuGet packages
         run: nuget restore HaveIBeenPwned.sln
+
+      - name: Test PLGX project paths
+        run: python -m unittest discover -s tests -v
 
       - name: Build PLGX
         shell: pwsh
