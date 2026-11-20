@@ -11,7 +11,9 @@ cd /d ""%base%
 del HaveIBeenPwned.plgx
 %netframework%MSBuild.exe /target:clean HaveIBeenPwned.sln /m
 %netframework%MSBuild.exe /p:Configuration=ReleasePlgx /m HaveIBeenPwned.sln /m
+if not exist mono mkdir mono
 copy /y HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.dll mono
+copy /y HaveIBeenPwned\bin\ReleasePlgx\Newtonsoft.Json.dll mono
 copy /y HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.plgx .
 popd
 

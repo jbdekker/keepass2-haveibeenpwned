@@ -4,7 +4,7 @@
 
 **Download plgx from [here](https://github.com/andrew-schofield/keepass2-haveibeenpwned/raw/master/HaveIBeenPwned.plgx).**
 
-**Mono users can download the dlls from [here](https://github.com/andrew-schofield/keepass2-haveibeenpwned/tree/master/mono).**
+**Mono users can download `HaveIBeenPwned.dll` and `Newtonsoft.Json.dll` from the [latest release](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest).**
 Mono users may find they need to install their distro equivalent of `mono-complete` for the plugin to work properly.
 
 ## Currently Supported Breach Lists

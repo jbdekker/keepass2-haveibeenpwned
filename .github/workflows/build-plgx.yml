@@ -88,10 +88,23 @@ jobs:
           }
           Copy-Item HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.plgx .\HaveIBeenPwned.plgx
 
+      - name: Stage Mono DLLs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path mono | Out-Null
+          Copy-Item HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.dll mono
+          Copy-Item HaveIBeenPwned\bin\ReleasePlgx\Newtonsoft.Json.dll mono
+
       - uses: actions/upload-artifact@v7
         with:
           name: HaveIBeenPwned-plgx
           path: HaveIBeenPwned.plgx
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: HaveIBeenPwned-mono
+          path: mono/*.dll
           if-no-files-found: error
 
   release:
@@ -107,8 +120,16 @@ jobs:
           name: HaveIBeenPwned-plgx
           path: dist
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: HaveIBeenPwned-mono
+          path: dist/mono
+
       - uses: softprops/action-gh-release@v3.0.4
         with:
           tag_name: ${{ needs.build.outputs.release_tag }}
-          files: dist/HaveIBeenPwned.plgx
+          files: |
+            dist/HaveIBeenPwned.plgx
+            dist/mono/HaveIBeenPwned.dll
+            dist/mono/Newtonsoft.Json.dll
           generate_release_notes: true
