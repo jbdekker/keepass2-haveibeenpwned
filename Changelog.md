@@ -1,5 +1,8 @@
 # keepass2-haveibeenpwned Changelog
 
+### Unreleased
+* Package helper source files inside the project for KeePass 2.62 PLGX path validation.
+
 ### v1.3.6 - 2019-11-02
 * Fix broken version number on previous release
 
