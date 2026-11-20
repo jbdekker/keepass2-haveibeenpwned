@@ -4,6 +4,8 @@
 * Package helper source files inside the project for KeePass 2.62 PLGX path validation.
 * Build Mono DLLs from project outputs and publish them as workflow/release artifacts; remove checked-in DLLs.
 * Restore Newtonsoft.Json 6.0.4 from NuGet instead of tracking the dependency binary.
+* Use KeePass.exe to create PLGX files, set C# 5 and accurate PLGX prerequisites, and validate builds on pull requests.
+* Follow KeePass initialization, menu ownership, termination, and update URL conventions.
 
 ### v1.3.6 - 2019-11-02
 * Fix broken version number on previous release

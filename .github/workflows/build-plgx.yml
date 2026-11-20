@@ -7,6 +7,7 @@ on:
 
     tags:
       - '*'
+  pull_request:
 permissions:
   contents: read
 
@@ -61,7 +62,7 @@ jobs:
             $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
             $installPath = Join-Path $programFilesX86 'KeePass Password Safe 2'
             New-Item -ItemType Directory -Force -Path $installPath | Out-Null
-            Copy-Item $keePassExe (Join-Path $installPath 'KeePass.exe') -Force
+            Copy-Item -Path (Join-Path $extractPath '*') -Destination $installPath -Recurse -Force
           }
           catch {
             Write-Host ($_ | Format-List * -Force | Out-String)
@@ -75,26 +76,48 @@ jobs:
       - name: Test PLGX project paths
         run: python -m unittest discover -s tests -v
 
-      - name: Build PLGX
+      - name: Build plugin DLLs
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           msbuild HaveIBeenPwned.sln /target:Clean /m
           if ($LASTEXITCODE -ne 0) {
             throw "MSBuild clean failed with exit code $LASTEXITCODE."
           }
-          msbuild HaveIBeenPwned.sln /p:Configuration=ReleasePlgx /m
+          msbuild HaveIBeenPwned.sln /p:Configuration=Release /m
           if ($LASTEXITCODE -ne 0) {
-            throw "MSBuild ReleasePlgx failed with exit code $LASTEXITCODE."
+            throw "MSBuild Release failed with exit code $LASTEXITCODE."
           }
-          Copy-Item HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.plgx .\HaveIBeenPwned.plgx
 
-      - name: Stage Mono DLLs
+          New-Item -ItemType Directory -Force -Path mono | Out-Null
+          Copy-Item HaveIBeenPwned\bin\Release\HaveIBeenPwned.dll mono
+          Copy-Item HaveIBeenPwned\bin\Release\Newtonsoft.Json.dll mono
+
+          msbuild HaveIBeenPwned.sln /target:Clean /m
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSBuild clean before PLGX packaging failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Create PLGX with KeePass
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path mono | Out-Null
-          Copy-Item HaveIBeenPwned\bin\ReleasePlgx\HaveIBeenPwned.dll mono
-          Copy-Item HaveIBeenPwned\bin\ReleasePlgx\Newtonsoft.Json.dll mono
+          $ErrorActionPreference = 'Stop'
+          $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+          $keePassExe = Join-Path $programFilesX86 'KeePass Password Safe 2\KeePass.exe'
+          if (-not (Test-Path $keePassExe -PathType Leaf)) {
+            throw "KeePass.exe was not found at $keePassExe."
+          }
 
+          $pluginSource = Join-Path $env:GITHUB_WORKSPACE 'HaveIBeenPwned'
+          $plgxPath = Join-Path $env:GITHUB_WORKSPACE 'HaveIBeenPwned.plgx'
+          Remove-Item -LiteralPath $plgxPath -Force -ErrorAction SilentlyContinue
+          $process = Start-Process -FilePath $keePassExe -ArgumentList @('--plgx-create', $pluginSource, '--plgx-prereq-kp:2.34', '--plgx-prereq-net:4.5.2') -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "KeePass PLGX creation failed with exit code $($process.ExitCode)."
+          }
+          if (-not (Test-Path $plgxPath -PathType Leaf) -or (Get-Item $plgxPath).Length -eq 0) {
+            throw "KeePass did not create a non-empty PLGX at $plgxPath."
+          }
       - uses: actions/upload-artifact@v7
         with:
           name: HaveIBeenPwned-plgx

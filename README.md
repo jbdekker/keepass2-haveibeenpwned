@@ -2,12 +2,11 @@
 
 **KeePass 2.x plugin to check all entries with URLs against various breach lists.**
 
-**Download the PLGX from the [latest release](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/HaveIBeenPwned.plgx).**
+**KeePass recommends a DLL for official builds and a PLGX for custom builds. This project publishes both: [HaveIBeenPwned.dll](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/HaveIBeenPwned.dll) and [HaveIBeenPwned.plgx](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/HaveIBeenPwned.plgx). Install both to let KeePass choose the compatible format.**
 
-**Mono users can download [HaveIBeenPwned.dll](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/HaveIBeenPwned.dll) and [Newtonsoft.Json.dll](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/Newtonsoft.Json.dll) from the latest release.**
+**Mono users also need [Newtonsoft.Json.dll](https://github.com/jbdekker/keepass2-haveibeenpwned/releases/latest/download/Newtonsoft.Json.dll).** Install the distro equivalent of `mono-complete` if the plugin does not load.
 
-Main-branch builds are available as `HaveIBeenPwned-plgx` and `HaveIBeenPwned-mono` artifacts on the [Build PLGX workflow](https://github.com/jbdekker/keepass2-haveibeenpwned/actions/workflows/build-plgx.yml).
-Mono users may find they need to install their distro equivalent of `mono-complete` for the plugin to work properly.
+Main-branch and pull-request builds are available as `HaveIBeenPwned-plgx` and `HaveIBeenPwned-mono` artifacts on the [Build PLGX workflow](https://github.com/jbdekker/keepass2-haveibeenpwned/actions/workflows/build-plgx.yml).
 
 ## Currently Supported Breach Lists
 
@@ -34,6 +33,9 @@ Mono users may find they need to install their distro equivalent of `mono-comple
 * Right clicking on entries, or groups in the KeePass interfaces will also show the "Have I Been Pwned?" menu items, to allow the checks to be run on more specific sets of entries.
 * If you have an api key from [haveibeenpwned.com](https://haveibeenpwned.com/API/Key) you need to add it as a password to an entry called "hibp-apikey"
 
+## Building
+
+The project targets .NET Framework 4.5.2 and C# 5. Install the official KeePass ZIP under `C:\Program Files (x86)\KeePass Password Safe 2`, plus the .NET Framework targeting pack, NuGet CLI, and MSBuild. Run `build.bat` from a Developer Command Prompt. It restores packages, builds the DLLs, cleans `bin` and `obj`, then creates the PLGX with the official `KeePass.exe --plgx-create` command.
 
 ## Notes
 

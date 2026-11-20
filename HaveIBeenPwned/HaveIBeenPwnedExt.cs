@@ -24,30 +24,9 @@ namespace HaveIBeenPwned
 {
     public sealed class HaveIBeenPwnedExt : Plugin
     {
-        private IPluginHost pluginHost = null;
+        private IPluginHost pluginHost;
 
-        private ToolStripSeparator toolStripSeperatorGlobal = null;
-        private ToolStripMenuItem haveIBeenPwnedGlobalMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedGlobalServiceMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedGlobalUsernameMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedGlobalPasswordMenuItem = null;
-        private ToolStripMenuItem checkAllGlobalMenuItem = null;
-
-        private ToolStripSeparator toolStripSeperatorGroup = null;
-        private ToolStripMenuItem haveIBeenPwnedGroupMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedGroupServiceMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedGroupUsernameMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedGroupPasswordMenuItem = null;
-        private ToolStripMenuItem checkAllGroupMenuItem = null;
-
-        private ToolStripSeparator toolStripSeperatorEntry = null;
-        private ToolStripMenuItem haveIBeenPwnedEntryMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedEntryServiceMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedEntryUsernameMenuItem = null;
-        private ToolStripMenuItem haveIBeenPwnedEntryPasswordMenuItem = null;
-        private ToolStripMenuItem checkAllEntryMenuItem = null;
-
-        private static HttpClient client;
+        private HttpClient client;
         private StatusProgressForm progressForm;
 
         private Dictionary<BreachEnum, Func<HttpClient, IPluginHost, BaseChecker>> supportedBreachCheckers =
@@ -60,9 +39,13 @@ namespace HaveIBeenPwned
             { BreachEnum.CheckAll, (h, p) => new CombinedChecker(h, p) }
         };
 
-        public HaveIBeenPwnedExt()
+        public override bool Initialize(IPluginHost host)
         {
-            // proxy (updated only on app restart)
+            if (host == null) return false;
+
+            pluginHost = host;
+
+            // Use the KeePass proxy configuration for all HIBP requests.
             var proxyType = KeePass.Program.Config.Integration.ProxyType;
             var proxyAddress = KeePass.Program.Config.Integration.ProxyAddress;
             var proxyPort = KeePass.Program.Config.Integration.ProxyPort;
@@ -70,11 +53,12 @@ namespace HaveIBeenPwned
             var proxyUsername = KeePass.Program.Config.Integration.ProxyUserName;
             var proxyPassword = KeePass.Program.Config.Integration.ProxyPassword;
 
-            if (proxyType == ProxyServerType.Manual) {
+            if (proxyType == ProxyServerType.Manual)
+            {
                 HttpClientHandler handler;
                 if (proxyAuth == ProxyAuthType.Manual)
                 {
-                    handler = new HttpClientHandler()
+                    handler = new HttpClientHandler
                     {
                         Proxy = new WebProxy(String.Format("{0}:{1}", proxyAddress, proxyPort), false, null, new NetworkCredential(proxyUsername, proxyPassword)),
                         UseProxy = true,
@@ -82,12 +66,13 @@ namespace HaveIBeenPwned
                 }
                 else
                 {
-                    handler = new HttpClientHandler()
+                    handler = new HttpClientHandler
                     {
                         Proxy = new WebProxy(String.Format("{0}:{1}", proxyAddress, proxyPort)),
                         UseProxy = true,
                     };
                 }
+
                 client = new HttpClient(handler);
             }
             else
@@ -95,172 +80,90 @@ namespace HaveIBeenPwned
                 client = new HttpClient();
             }
 
-            // we need to force the security protocol to use Tls first, as HIBP only accepts this as a valid secure protocol
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             client.DefaultRequestHeaders.UserAgent.ParseAdd(string.Format("KeePass HIBP Checker/{0}", System.Reflection.Assembly.GetExecutingAssembly().GetName().Version));
             client.DefaultRequestHeaders.Accept.Clear();
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             client.Timeout = new TimeSpan(0, 30, 0);
-        }
-
-        public override bool Initialize(IPluginHost host)
-        {
-            pluginHost = host;
-
-            // Get a reference to the 'Tools' menu item container
-            ToolStripItemCollection tsMenu = pluginHost.MainWindow.ToolsMenu.DropDownItems;
-            var groupContextMenu = pluginHost.MainWindow.GroupContextMenu.Items;
-            var entryContextMenu = pluginHost.MainWindow.EntryContextMenu.Items;
-
-            // Add a separator at the bottom
-            toolStripSeperatorGlobal = new ToolStripSeparator();
-            tsMenu.Add(toolStripSeperatorGlobal);
-            toolStripSeperatorGroup = new ToolStripSeparator();
-            groupContextMenu.Add(toolStripSeperatorGroup);
-            toolStripSeperatorEntry = new ToolStripSeparator();
-            entryContextMenu.Add(toolStripSeperatorEntry);
-
-            // Add global menu item 'Have I Been Pwned?' for all database entries
-            haveIBeenPwnedGlobalMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGlobalMenuItem.Text = Resources.MenuTitle;
-            haveIBeenPwnedGlobalMenuItem.Image = Resources.hibp.ToBitmap();
-
-            haveIBeenPwnedGlobalServiceMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGlobalServiceMenuItem.Text = Resources.MenuItemSiteTitle;
-            haveIBeenPwnedGlobalServiceMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedGlobalServiceMenuItem.Click += this.Database_CheckHaveIBeenPwnedSites;
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Add(haveIBeenPwnedGlobalServiceMenuItem);
-
-            haveIBeenPwnedGlobalUsernameMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGlobalUsernameMenuItem.Text = Resources.MenuItemUsernameTitle;
-            haveIBeenPwnedGlobalUsernameMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedGlobalUsernameMenuItem.Click += this.Database_CheckHaveIBeenPwnedUsernames;
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Add(haveIBeenPwnedGlobalUsernameMenuItem);
-
-            haveIBeenPwnedGlobalPasswordMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGlobalPasswordMenuItem.Text = Resources.MenuItemPasswordTitle;
-            haveIBeenPwnedGlobalPasswordMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedGlobalPasswordMenuItem.Click += this.Database_CheckHaveIBeenPwnedPasswords;
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Add(haveIBeenPwnedGlobalPasswordMenuItem);
-
-            checkAllGlobalMenuItem = new ToolStripMenuItem();
-            checkAllGlobalMenuItem.Text = Resources.MenuItemCheckAllTitle;
-            checkAllGlobalMenuItem.Image = Resources.hibp.ToBitmap();
-            checkAllGlobalMenuItem.Click += this.Database_CheckAll;
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Add(checkAllGlobalMenuItem);
-
-            tsMenu.Add(haveIBeenPwnedGlobalMenuItem);
-
-            // Add group context menu item for the selected group
-            haveIBeenPwnedGroupMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGroupMenuItem.Text = Resources.MenuTitle;
-            haveIBeenPwnedGroupMenuItem.Image = Resources.hibp.ToBitmap();
-
-            haveIBeenPwnedGroupServiceMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGroupServiceMenuItem.Text = Resources.MenuItemSiteTitle;
-            haveIBeenPwnedGroupServiceMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedGroupServiceMenuItem.Click += this.Group_CheckHaveIBeenPwnedSites;
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Add(haveIBeenPwnedGroupServiceMenuItem);
-
-            haveIBeenPwnedGroupUsernameMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGroupUsernameMenuItem.Text = Resources.MenuItemUsernameTitle;
-            haveIBeenPwnedGroupUsernameMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedGroupUsernameMenuItem.Click += this.Group_CheckHaveIBeenPwnedUsernames;
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Add(haveIBeenPwnedGroupUsernameMenuItem);
-
-            haveIBeenPwnedGroupPasswordMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedGroupPasswordMenuItem.Text = Resources.MenuItemPasswordTitle;
-            haveIBeenPwnedGroupPasswordMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedGroupPasswordMenuItem.Click += this.Group_CheckHaveIBeenPwnedPasswords;
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Add(haveIBeenPwnedGroupPasswordMenuItem);
-            
-            checkAllGroupMenuItem = new ToolStripMenuItem();
-            checkAllGroupMenuItem.Text = Resources.MenuItemCheckAllTitle;
-            checkAllGroupMenuItem.Image = Resources.hibp.ToBitmap();
-            checkAllGroupMenuItem.Click += this.Group_CheckAll;
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Add(checkAllGroupMenuItem);
-
-            groupContextMenu.Add(haveIBeenPwnedGroupMenuItem);
-
-            // Add entry context menu item for the selected entries
-            haveIBeenPwnedEntryMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedEntryMenuItem.Text = Resources.MenuTitle;
-            haveIBeenPwnedEntryMenuItem.Image = Resources.hibp.ToBitmap();
-
-            haveIBeenPwnedEntryServiceMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedEntryServiceMenuItem.Text = Resources.MenuItemSiteTitle;
-            haveIBeenPwnedEntryServiceMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedEntryServiceMenuItem.Click += this.Entries_CheckHaveIBeenPwnedSites;
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Add(haveIBeenPwnedEntryServiceMenuItem);
-
-            haveIBeenPwnedEntryUsernameMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedEntryUsernameMenuItem.Text = Resources.MenuItemUsernameTitle;
-            haveIBeenPwnedEntryUsernameMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedEntryUsernameMenuItem.Click += this.Entries_CheckHaveIBeenPwnedUsernames;
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Add(haveIBeenPwnedEntryUsernameMenuItem);
-
-            haveIBeenPwnedEntryPasswordMenuItem = new ToolStripMenuItem();
-            haveIBeenPwnedEntryPasswordMenuItem.Text = Resources.MenuItemPasswordTitle;
-            haveIBeenPwnedEntryPasswordMenuItem.Image = Resources.hibp.ToBitmap();
-            haveIBeenPwnedEntryPasswordMenuItem.Click += this.Entries_CheckHaveIBeenPwnedPasswords;
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Add(haveIBeenPwnedEntryPasswordMenuItem);
-
-            checkAllEntryMenuItem = new ToolStripMenuItem();
-            checkAllEntryMenuItem.Text = Resources.MenuItemCheckAllTitle;
-            checkAllEntryMenuItem.Image = Resources.hibp.ToBitmap();
-            checkAllEntryMenuItem.Click += this.Entries_CheckAll;
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Add(checkAllEntryMenuItem);
-
-            entryContextMenu.Add(haveIBeenPwnedEntryMenuItem);
 
             return true;
         }
 
         public override void Terminate()
         {
-            // Remove all of our menu items
-            ToolStripItemCollection tsMenu = pluginHost.MainWindow.ToolsMenu.DropDownItems;
-            haveIBeenPwnedGlobalServiceMenuItem.Click -= this.Database_CheckHaveIBeenPwnedSites;
-            haveIBeenPwnedGlobalUsernameMenuItem.Click -= this.Database_CheckHaveIBeenPwnedUsernames;
-            haveIBeenPwnedGlobalPasswordMenuItem.Click -= this.Database_CheckHaveIBeenPwnedPasswords;
-            checkAllGlobalMenuItem.Click -= this.Database_CheckAll;
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Remove(haveIBeenPwnedGlobalServiceMenuItem);
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Remove(haveIBeenPwnedGlobalUsernameMenuItem);
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Remove(haveIBeenPwnedGlobalPasswordMenuItem);
-            haveIBeenPwnedGlobalMenuItem.DropDown.Items.Remove(checkAllGlobalMenuItem);
-            tsMenu.Remove(haveIBeenPwnedGlobalMenuItem);
-            tsMenu.Remove(toolStripSeperatorGlobal);
+            if (client != null)
+            {
+                client.Dispose();
+                client = null;
+            }
 
-            var groupContextMenu = pluginHost.MainWindow.GroupContextMenu.Items;
-            haveIBeenPwnedGroupServiceMenuItem.Click -= this.Group_CheckHaveIBeenPwnedSites;
-            haveIBeenPwnedGroupUsernameMenuItem.Click -= this.Group_CheckHaveIBeenPwnedUsernames;
-            haveIBeenPwnedGroupPasswordMenuItem.Click -= this.Group_CheckHaveIBeenPwnedPasswords;
-            checkAllGroupMenuItem.Click -= this.Group_CheckAll;
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Remove(haveIBeenPwnedGroupServiceMenuItem);
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Remove(haveIBeenPwnedGroupUsernameMenuItem);
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Remove(haveIBeenPwnedGroupPasswordMenuItem);
-            haveIBeenPwnedGroupMenuItem.DropDown.Items.Remove(checkAllGroupMenuItem);
-            groupContextMenu.Remove(haveIBeenPwnedGroupMenuItem);
-            groupContextMenu.Remove(toolStripSeperatorGroup);
-
-            var entryContextMenu = pluginHost.MainWindow.EntryContextMenu.Items;
-            haveIBeenPwnedEntryServiceMenuItem.Click -= this.Entries_CheckHaveIBeenPwnedSites;
-            haveIBeenPwnedEntryUsernameMenuItem.Click -= this.Entries_CheckHaveIBeenPwnedUsernames;
-            haveIBeenPwnedEntryPasswordMenuItem.Click -= this.Entries_CheckHaveIBeenPwnedPasswords;
-            checkAllEntryMenuItem.Click -= this.Entries_CheckAll;
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Remove(haveIBeenPwnedEntryServiceMenuItem);
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Remove(haveIBeenPwnedEntryUsernameMenuItem);
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Remove(haveIBeenPwnedEntryPasswordMenuItem);
-            haveIBeenPwnedEntryMenuItem.DropDown.Items.Remove(checkAllEntryMenuItem);
-            entryContextMenu.Remove(haveIBeenPwnedEntryMenuItem);
-            entryContextMenu.Remove(toolStripSeperatorEntry);
+            pluginHost = null;
         }
+
+        public override ToolStripMenuItem GetMenuItem(PluginMenuType t)
+        {
+            switch (t)
+            {
+                case PluginMenuType.Main:
+                    return CreateCheckerMenuItem(
+                        this.Database_CheckHaveIBeenPwnedSites,
+                        this.Database_CheckHaveIBeenPwnedUsernames,
+                        this.Database_CheckHaveIBeenPwnedPasswords,
+                        this.Database_CheckAll);
+                case PluginMenuType.Group:
+                    return CreateCheckerMenuItem(
+                        this.Group_CheckHaveIBeenPwnedSites,
+                        this.Group_CheckHaveIBeenPwnedUsernames,
+                        this.Group_CheckHaveIBeenPwnedPasswords,
+                        this.Group_CheckAll);
+                case PluginMenuType.Entry:
+                    return CreateCheckerMenuItem(
+                        this.Entries_CheckHaveIBeenPwnedSites,
+                        this.Entries_CheckHaveIBeenPwnedUsernames,
+                        this.Entries_CheckHaveIBeenPwnedPasswords,
+                        this.Entries_CheckAll);
+                default:
+                    return null;
+            }
+        }
+
+        private ToolStripMenuItem CreateCheckerMenuItem(
+            EventHandler checkSites,
+            EventHandler checkUsernames,
+            EventHandler checkPasswords,
+            EventHandler checkAll)
+        {
+            var menuItem = new ToolStripMenuItem
+            {
+                Text = Resources.MenuTitle,
+                Image = Resources.hibp.ToBitmap()
+            };
+
+            AddCheckerMenuItem(menuItem, Resources.MenuItemSiteTitle, checkSites);
+            AddCheckerMenuItem(menuItem, Resources.MenuItemUsernameTitle, checkUsernames);
+            AddCheckerMenuItem(menuItem, Resources.MenuItemPasswordTitle, checkPasswords);
+            AddCheckerMenuItem(menuItem, Resources.MenuItemCheckAllTitle, checkAll);
+
+            return menuItem;
+        }
+
+        private static void AddCheckerMenuItem(ToolStripMenuItem parent, string text, EventHandler clickHandler)
+        {
+            var menuItem = new ToolStripMenuItem
+            {
+                Text = text,
+                Image = Resources.hibp.ToBitmap()
+            };
+            menuItem.Click += clickHandler;
+            parent.DropDownItems.Add(menuItem);
+        }
+
 
         public override string UpdateUrl
         {
             get
             {
-                return "https://raw.githubusercontent.com/andrew-schofield/keepass2-haveibeenpwned/master/VERSION";
+                return "https://raw.githubusercontent.com/jbdekker/keepass2-haveibeenpwned/main/VERSION";
             }
         }
 
@@ -271,6 +174,7 @@ namespace HaveIBeenPwned
                 return Resources.hibp.ToBitmap();
             }
         }
+
 
         private void ReportProgress(ProgressItem progress)
         {
